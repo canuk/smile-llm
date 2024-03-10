@@ -21,7 +21,7 @@
     var slot_id = -1;
 
     const session = signal({
-      prompt: "Instruct: You are smile-bot, a friendly chatbot that evaluates questions based on Bloom's Taxonomy levels 1-5, with 1 being simple fact recall and 5 requiring higher-order thinking. When asked to evaluate a question, respond concisely with: I would evaluate this question as a Level [1-5] type question. The reason is [short explanation]. [After explaining, suggest 2 possible ways to even make the question more innovative and creative]\nExample:\nUser: Could you provide a list of substances that are lighter than air?\nsmile-bot: I would evaluate this question as a Level 2 type question. The reason is it requires recalling and comprehending learned information.\nExample:\nUser:If Sun loses the ultra violet ray in its spectrum, what would be the consequences in sea animals on earth?\nsmile-bot:I would classify this question as a level 5 question for several reasons: Firstly, the question poses a hypothetical scenario that requires the questioner to engage in creative thinking and speculation about a scientific concept. Secondly, the question involves the potential consequences of the loss of a specific aspect of the sun's spectrum on sea animals on Earth, which requires the questioner to think beyond just the direct impact on the sun and consider the broader ecological implications. Thirdly, the question is well-formulated and free of any linguistic or cultural errors, demonstrating a high level of fluency in the language and clarity of communication. Lastly, the question involves scientific concepts and potentially complex ecological systems, requiring the questioner to demonstrate knowledge and understanding of these areas in order to provide a well-reasoned response. Overall, the question requires a high level of creativity, critical thinking, fluency in the language, and scientific knowledge, which is why it can be considered a level 5 question.",
+      prompt: "Instruct:You are smile-bot, a friendly chatbot that evaluates questions based on Bloom's Taxonomy levels 1-5, with 1 being simple fact recall and 5 requiring higher-order thinking.\nInstruct: DO NOT ANSWER THE QUESTION. Respond concisely with:\n\"Level [1-5] question. [Short explanation]. To make it more creative: [ONLY TWO suggestions].\"\n\nExample:\nUser: Could you provide a list of substances that are lighter than air?\nsmile-bot: Level 2 question. It requires recalling and comprehending learned information. To make it more creative: What unique applications could these substances have? How could we develop new lightweight materials?\nExample:\nUser: If Sun loses the ultra violet ray in its spectrum, what would be the consequences in sea animals on earth?\nsmile-bot: Level 5 question. It requires creative thinking, speculation, understanding broader implications and scientific knowledge. To make it more creative: How could we design experiments to test this scenario? What potential solutions could mitigate these consequences?",
       template: "{{prompt}}\n\n{{history}}\n{{char}}:",
       historyTemplate: "{{name}}: {{message}}",
       transcript: [],
@@ -231,6 +231,10 @@
           }
           transcriptUpdate([...history, [char, currentMessages]])
           console.log("Completion finished: '", currentMessages.map(msg => msg.content).join(''), "', summary: ", data);
+
+          // Save the current messages (model's response) to the database
+          const responseText = currentMessages.map(msg => msg.content).join('');
+          saveResponseToDatabase(responseText);          
         } else {
           currentMessages.push(data);
           slot_id = data.slot_id;
@@ -247,6 +251,40 @@
       }
 
       controller.value = null;
+    }
+
+    async function saveResponseToDatabase(responseText) {
+      const lastInsertRowid = localStorage.getItem('lastInsertRowid');
+
+      const requestBody = {
+        transaction: [
+          {
+            statement: "INSERT INTO responses (response_text, question_id) VALUES (:response_text, :question_id)",
+            values: {
+              response_text: responseText,
+              question_id: lastInsertRowid
+            }
+          }
+        ]
+      };
+
+      try {
+        const response = await fetch('http://localhost:8081/api/transaction', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (response.ok) {
+          console.log('Response saved successfully');
+        } else {
+          console.error('Error saving response');
+        }
+      } catch (error) {
+        console.error('An error occurred:', error);
+      }
     }
 
     // send message to server
@@ -342,6 +380,47 @@
       const submit = (e) => {
         stop(e);
         chat(message.value);
+
+        // Construct INSERT into SQLite
+        const requestBody = {
+          transaction: [
+            {
+              statement: "INSERT INTO questions (question_text) VALUES (:question_text)",
+              values: {
+                question_text: message.value
+              }
+            }
+          ]
+        };
+
+        try {
+          // Send the POST request to the SQLite server
+          const fetchData = async () => {
+            const response = await fetch('http://localhost:8081/api/transaction', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(requestBody)
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              const lastInsertRowid = data.data[0].lastInsertRowid;
+              localStorage.setItem('lastInsertRowid', lastInsertRowid);              
+              console.log('Question saved successfully');
+              // Reset the form
+              message.value = "";
+            } else {
+              console.error('Error saving question');
+              // Show an error message
+            }
+          };
+
+          fetchData();
+        } catch (error) {
+          console.error('An error occurred:', error);
+        }  
         message.value = "";
       }
 
@@ -367,9 +446,9 @@
             />
           </div>
           <div class="right">
-            <button className="btn btn-primary m-1 mb-3" type="submit" disabled=${generating.value}><i class="bi bi-patch-question"></i> Submit Question</button>
-            <button className="btn btn-danger m-1 mb-3" onclick=${stop} disabled=${!generating.value}><i class="bi bi-stop-circle"></i> Stop</button>
-            <button className="btn btn-primary m-1 mb-3" onclick=${reset}><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+            <button className="btn btn-primary m-1 mt-3" type="submit" disabled=${generating.value}><i class="bi bi-patch-question"></i> ${!generating.value ? 'Submit Question' : 'Evaluating Question...'}</button>
+            <button className="btn btn-danger m-1 mt-3" onclick=${stop} disabled=${!generating.value}><i class="bi bi-stop-circle"></i> Stop</button>
+            <button className="btn btn-primary m-1 mt-3" onclick=${reset}><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
           </div>
         </form>
       `
