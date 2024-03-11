@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMILE LLM Question Log</title>
+    <link rel="stylesheet" href="/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="/icons/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/style.css"/>
+    <script src="/js/bootstrap.min.js"></script>
+    <style>
+        .container {
+            padding-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="text-center">
+          <img src="/smile_llm.png" alt="SMILE LLM" class="center" height="50">
+          <h2>Question Log</h2>
+        </div>
+        <button id="exportCsvBtn" class="btn btn-primary mb-3"><i class="bi bi-filetype-csv"></i> Export to CSV</button>
+        <table class="table table-striped table-bordered">
+            <thead>
+                <tr>
+                    <th>Question</th>
+                    <th>Response</th>
+                </tr>
+            </thead>
+            <tbody id="questionsResponsesBody">
+                <!-- Rows will be added here dynamically -->
+            </tbody>
+        </table>
+        <nav aria-label="Page navigation example">
+            <ul class="pagination justify-content-center">
+                <li class="page-item"><a class="page-link" href="#" id="prevPage">Previous</a></li>
+                <li class="page-item"><a class="page-link" href="#" id="nextPage">Next</a></li>
+            </ul>
+        </nav>
+    </div>
+
+    <script>
+        const apiBaseUrl = 'http://localhost:8000/api';
+
+        async function getTotalRecords() {
+            const response = await fetch(`${apiBaseUrl}/tables/responses/rows?_limit=1&_schema=id`);
+            const { total } = await response.json();
+            return total;
+        }
+
+        document.getElementById('exportCsvBtn').addEventListener('click', async () => {
+            try {
+                const totalRecords = await getTotalRecords();
+                const exportUrl = `${apiBaseUrl}/tables/responses/rows?_limit=${totalRecords}&_ordering=-created_at&_extend=question_id`;
+                
+                const response = await fetch(exportUrl);
+                const {data} = await response.json();
+                const csvContent = convertToCSV(data);
+                downloadCSV(csvContent, 'question_log.csv');
+            } catch (error) {
+                console.error('Failed to fetch data for CSV export:', error);
+            }
+        });
+
+        function convertToCSV(data) {
+            const header = ['Question', 'Response'];
+            const rows = data.map(row => [
+                `"${row.question_id_data.question_text.replace(/"/g, '""')}"`,
+                `"${row.response_text.replace(/"/g, '""')}"`
+            ]);
+            return [header.join(','), ...rows.map(e => e.join(','))].join('\n');
+        }
+
+        function downloadCSV(csvContent, fileName) {
+            const blob = new Blob([csvContent], {type: 'text/csv;charset=utf-8;'});
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', fileName);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        let currentUrl = `${apiBaseUrl}/tables/responses/rows?_limit=10&_ordering=-created_at&_extend=question_id`;
+
+        async function fetchQuestionsAndResponses(url = currentUrl) {
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                const rows = data.data;
+
+                document.getElementById('questionsResponsesBody').innerHTML = rows.map(row => `
+                    <tr>
+                        <td>${row.question_id_data.question_text}</td>
+                        <td>${row.response_text}</td>
+                    </tr>
+                `).join('');
+
+                // Update pagination links
+                const prevPage = document.getElementById('prevPage');
+                const nextPage = document.getElementById('nextPage');
+                prevPage.parentElement.classList.toggle('disabled', !data.previous);
+                nextPage.parentElement.classList.toggle('disabled', !data.next);
+
+                prevPage.onclick = data.previous ? () => fetchQuestionsAndResponses(`${apiBaseUrl}${data.previous}`) : (e) => e.preventDefault();
+                nextPage.onclick = data.next ? () => fetchQuestionsAndResponses(`${apiBaseUrl}${data.next}`) : (e) => e.preventDefault();
+            } catch (error) {
+                console.error('Failed to fetch questions and responses:', error);
+            }
+        }
+
+        fetchQuestionsAndResponses();
+    </script>
+</body>
+</html>

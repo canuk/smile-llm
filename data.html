@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Tables Viewer</title>
+    <link rel="stylesheet" href="/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="/icons/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="/style.css"/>
+    <script src="/js/bootstrap.min.js"></script>
+</head>
+<body>
+   
+    <div class="container">
+      <div class="text-center">
+        <img src="/smile_llm.png" alt="SMILE LLM" class="center" height="75">
+        <h2>Local Data</h2>
+      </div>
+      <div id="tablesContainer"></div>
+    </div>
+    
+
+    <script>
+        const apiBaseUrl = 'http://localhost:8000/api/tables'; // Change this to your actual API URL
+
+        // Fetches all tables and for each table, fetches its rows
+        const fetchTablesAndRows = async () => {
+          try {
+              const tablesResponse = await fetch(`${apiBaseUrl}/`);
+              const tablesBody = await tablesResponse.json();
+              const tables = tablesBody.data; // Access the 'data' property for tables
+
+              if (!Array.isArray(tables)) {
+                  console.error('Error: Expected tables to be an array but received:', tables);
+                  return; // Exit if tables is not an array
+              }
+
+              for (const table of tables) {
+                  // Skip the sqlite_sequence table
+                  if (table.name === 'sqlite_sequence') continue;
+
+                  const rowsResponse = await fetch(`${apiBaseUrl}/${table.name}/rows?_limit=100&_ordering=-created_at`);
+                  const rowsBody = await rowsResponse.json();
+                  const rows = rowsBody.data; // Access the 'data' property for rows
+                  displayTableWithRows(table.name, rows);
+              }
+          } catch (error) {
+              console.error('Error fetching tables or rows:', error);
+          }
+      };
+
+      const displayTableWithRows = (tableName, rows) => {
+        const container = document.getElementById('tablesContainer');
+        const tableContainer = document.createElement('div');
+        tableContainer.className = 'table-responsive'; // Bootstrap class for responsive tables
+        const tableTitle = document.createElement('h2');
+        tableTitle.textContent = `${tableName}`;
+        tableContainer.appendChild(tableTitle);
+
+        if (rows && rows.length > 0) {
+            const tableElement = document.createElement('table');
+            tableElement.className = 'table table-striped table-hover'; // Add Bootstrap table classes here
+            
+            const thead = document.createElement('thead');
+            thead.className = 'thead-dark'; // Bootstrap class for a dark table header
+            const tbody = document.createElement('tbody');
+            
+            // Create header row from the first row's keys
+            const headerRow = document.createElement('tr');
+            Object.keys(rows[0]).forEach(key => {
+                const th = document.createElement('th');
+                th.textContent = key;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+
+            // Populate table body with row data
+            rows.forEach(row => {
+                const tr = document.createElement('tr');
+                Object.values(row).forEach(value => {
+                    const td = document.createElement('td');
+                    td.textContent = value;
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+
+            tableElement.appendChild(thead);
+            tableElement.appendChild(tbody);
+            tableContainer.appendChild(tableElement);
+        } else {
+            const noDataRow = document.createElement('p');
+            noDataRow.textContent = 'No rows found in this table.';
+            tableContainer.appendChild(noDataRow);
+        }
+
+        container.appendChild(tableContainer);
+    };
+
+      // Start the process
+    fetchTablesAndRows();
+    </script>
+</body>
+</html>
