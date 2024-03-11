@@ -1,0 +1,11 @@
+[Unit]
+Description=Soul SQLite REST Server
+After=network-online.target
+
+[Service]
+ExecStart=soul -d /var/www/html/smilellm.db -p 8081
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target

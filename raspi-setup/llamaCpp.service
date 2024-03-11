@@ -1,0 +1,12 @@
+[Unit]
+Description=Llama.cpp Server
+After=network-online.target
+
+[Service]
+ExecStart=/home/pi/llama.cpp/server -m /home/pi/llama.cpp/models/phi-2.Q4_K_M.gguf -c 2048 --path /var/www/html
+WorkingDirectory=/home/pi/llama.cpp
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
