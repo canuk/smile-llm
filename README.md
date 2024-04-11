@@ -1,4 +1,31 @@
-### README
+# README
+
+## About this Project
+This project is for using a Raspberry Pi to power a local instance of a Large Language Model (Phi-2) to run a website that will evaluate questions on a level from one to five, along Bloom's Taxonomy, with one being a very simple question and five being a question that requires higher order thinking skills.
+
+### Running Locally
+If you want to run this on your own computer, the steps are almost the same, you just probably don't want to create system services to background run the llama.cpp server and the soul server, however you'll need both llama.cpp and soul running at the same time, and need to make sure the paths are correct in index.html, question_log.html and data.html
+
+### Install Software on Raspberry Pi
+Install required packages
+```
+sudo apt update && sudo apt upgrade && sudo apt install git
+sudo apt install python3-torch python3-numpy python3-sentencepiece
+sudo apt install g++ build-essential
+sudo apt install sqlite3
+sudo apt remove apache2
+sudo apt install nginx
+sudo apt install npm
+sudo npm install -g soul-cli
+```
+### Download and compile llama.cpp
+```
+cd ~
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp/
+make
+```
+
 
 #### Raspberry Pi Setup & Development Notes
 Install SQLite
@@ -48,3 +75,12 @@ sudo apt-get update
 sudo apt-get install dnsmasq hostapd
 
 There was a bunch of new stuff on Bookworm (newest RPi OS) where the access point didn't work out of the box. The NetworkManager kept trying to take control so I had to stop network manager, statically assign an IP address to wlan0, it was a whole thing.
+
+
+To Test Locally on My Mac
+Load 3(!!) Servers:
+```
+soul -d ~/projects/smilellm/smilellm.db -p 8081
+./server -m models/phi-2.Q5_K_M.gguf -c 2048 --path ~/projects/smilellm
+libretranslate
+```

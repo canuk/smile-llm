@@ -212,6 +212,23 @@
       return String(str).replaceAll(/\{\{(.*?)\}\}/g, (_, key) => template(settings[key]));
     }
 
+    const updateUI = (translatedText) => {
+      // Get the div element with the id 'chat'
+      const chatDiv = document.getElementById('chat');
+
+      // Get all the p elements inside the chat div
+      const pElements = chatDiv.querySelectorAll('p');
+
+      // Get the last p element
+      const lastPElement = pElements[pElements.length - 1];
+
+      // Get the span element inside the last p element
+      const spanElement = lastPElement.querySelector('span');
+
+      // Update the text content of the span element with the translated text
+      spanElement.textContent = translatedText;
+    }    
+
     async function runLlama(prompt, llamaParams, char) {
       const currentMessages = [];
       const history = session.value.transcript;
@@ -234,14 +251,21 @@
 
           // Save the current messages (model's response) to the database
           const responseText = currentMessages.map(msg => msg.content).join('');
-          saveResponseToDatabase(responseText);          
+          let translatedResponseText = responseText;
+          const selectedLanguage = document.querySelector('input[name="language"]:checked').value;
+
+          if (selectedLanguage === "es") {
+            console.log("Translating response to Spanish...");
+            translatedResponseText = await translateToSpanish(responseText);
+            // Update the user interface with the translated text
+            console.log(translatedResponseText);            
+            updateUI(translatedResponseText);               
+          }
+
+          saveResponseToDatabase(translatedResponseText);  
         } else {
           currentMessages.push(data);
           slot_id = data.slot_id;
-          if (selected_image && !data.multimodal) {
-            alert("The server was not compiled for multimodal or the model projector can't be loaded.");
-            return;
-          }
           transcriptUpdate([...history, [char, currentMessages]])
         }
 
@@ -287,11 +311,54 @@
       }
     }
 
+    const translateToEnglish = async (text) => {
+      const res = await fetch("http://127.0.0.1:5000/translate", {
+        method: "POST",
+        body: JSON.stringify({
+          q: text,
+          source: "es",
+          target: "en",
+          format: "text"
+        }),
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const data = await res.json();
+      return data.translatedText;
+    };
+
+    const translateToSpanish = async (text) => {
+      const res = await fetch("http://127.0.0.1:5000/translate", {
+        method: "POST",
+        body: JSON.stringify({
+          q: text,
+          source: "en",
+          target: "es",
+          format: "text"
+        }),
+        headers: { "Content-Type": "application/json" }
+      });
+
+      const data = await res.json();
+      return data.translatedText;
+    };    
+
     // send message to server
     const chat = async (msg) => {
       if (controller.value) {
         console.log('already running...');
         return;
+      }
+
+      const selectedLanguage = document.querySelector('input[name="language"]:checked').value;
+
+      const originalMsg = msg;
+
+      if (selectedLanguage === "es") {
+        
+        console.log("Translating to English...");
+        msg = await translateToEnglish(msg);
+        console.log(msg);
       }
 
       transcriptUpdate([...session.value.transcript, ["{{user}}", msg]])
@@ -311,33 +378,13 @@
             )
         ).join("\n"),
       });
-      if (selected_image) {
-        prompt = `A chat between a curious human and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the human's questions.\nUSER:[img-10]${msg}\nASSISTANT:`;
-      }
+
       await runLlama(prompt, {
         ...params.value,
         slot_id: slot_id,
         stop: ["</s>", template("{{char}}:"), template("{{user}}:")],
       }, "{{char}}");
-    }
 
-    const runCompletion = () => {
-      if (controller.value) {
-        console.log('already running...');
-        return;
-      }
-      const { prompt } = session.value;
-      transcriptUpdate([...session.value.transcript, ["", prompt]]);
-      runLlama(prompt, {
-        ...params.value,
-        slot_id: slot_id,
-        stop: [],
-      }, "").finally(() => {
-        session.value.prompt = session.value.transcript.map(([_, data]) =>
-          Array.isArray(data) ? data.map(msg => msg.content).join('') : data
-        ).join('');
-        session.value.transcript = [];
-      })
     }
 
     const stop = (e) => {
@@ -351,27 +398,6 @@
     const reset = (e) => {
       stop(e);
       transcriptUpdate([]);
-    }
-
-    const uploadImage = (e) => {
-      e.preventDefault();
-      document.getElementById("fileInput").click();
-      document.getElementById("fileInput").addEventListener("change", function (event) {
-        const selectedFile = event.target.files[0];
-        if (selectedFile) {
-          const reader = new FileReader();
-          reader.onload = function () {
-            const image_data = reader.result;
-            session.value = { ...session.value, image_selected: image_data };
-            params.value = {
-              ...params.value, image_data: [
-                { data: image_data.replace(/data:image\/[^;]+;base64,/, ''), id: 10 }]
-            }
-          };
-          selected_image = true;
-          reader.readAsDataURL(selectedFile);
-        }
-      });
     }
 
     function MessageInput() {
@@ -433,8 +459,8 @@
       return html`
         <form onsubmit=${submit}>
           <div>
-            <h3 class="mt-4">Ask a question</h3>
-            <label for="test-prompt" class="form-label">With the help of an Large Language Model (LLM), your question will be evaluated on a rubric from Level 1 to Level 5 aligned to Bloom's Taxonomy.</label>
+            <h3 id="ask-a-question-header" class="mt-4">Ask a question</h3>
+            <label id="ask-a-question-label" for="test-prompt" class="form-label">With the help of an Large Language Model (LLM), your question will be evaluated on a rubric from Level 1 to Level 5 aligned to Bloom's Taxonomy.</label>
             <textarea
                className=form-control ${generating.value ? "loading" : null}
                oninput=${(e) => message.value = e.target.value}
@@ -448,7 +474,15 @@
           <div class="right">
             <button className="btn btn-primary m-1 mt-3" type="submit" disabled=${generating.value}><i class="bi bi-patch-question"></i> ${!generating.value ? 'Submit Question' : 'Evaluating Question...'}</button>
             <button className="btn btn-danger m-1 mt-3" onclick=${stop} disabled=${!generating.value}><i class="bi bi-stop-circle"></i> Stop</button>
-            <button className="btn btn-primary m-1 mt-3" onclick=${reset}><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+            <button className="btn btn-primary m-1 mt-3" onclick=${reset}><i className="bi bi-arrow-counterclockwise"></i> Reset</button>
+            <span className="form-check form-check-inline">
+              <input className="form-check-input" type="radio" name="language" id="en" value="en" checked />
+              <label className="form-check-label" for="en">English</label>
+            </span>
+            <span className="form-check form-check-inline">
+              <input className="form-check-input" type="radio" name="language" id="es" value="es" />
+              <label className="form-check-label" for="es">Español</label>
+            </span>              
           </div>
         </form>
       `
@@ -463,7 +497,7 @@
         <div>
           <button onclick=${submit} type="button" disabled=${generating.value}>Start</button>
           <button onclick=${stop} disabled=${!generating.value}>Stop</button>
-          <button onclick=${reset}>Reset</button>
+          <button onclick=${reset}>Reset</button>         
         </div>`;
     }
 

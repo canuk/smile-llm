@@ -1,0 +1,12 @@
+[Unit]
+Description=LibreTranslate Server
+After=network-online.target
+
+[Service]
+ExecStart=/home/pi/.local/pipx/venvs/libretranslate/bin/libretranslate
+WorkingDirectory=/home/pi
+Restart=always
+User=root
+
+[Install]
+WantedBy=multi-user.target
