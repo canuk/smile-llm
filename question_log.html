@@ -41,7 +41,7 @@
     </div>
 
     <script>
-        const apiBaseUrl = 'http://localhost:8081/api';
+        const apiBaseUrl = '/database';
 
         async function getTotalRecords() {
             const response = await fetch(`${apiBaseUrl}/tables/responses/rows?_limit=1&_schema=id`);

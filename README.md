@@ -53,6 +53,7 @@ add this to /etc/nginx/sites-enabled:
 ```
         location /database {
                 proxy_pass http://127.0.0.1:8081/api;
+                proxy_set_header Cookie "";
         }
 ```
 copy `soul.service` file to load the soul server on boot/reboot
@@ -83,4 +84,17 @@ Load 3(!!) Servers:
 soul -d ~/projects/smilellm/smilellm.db -p 8081
 ./server -m models/phi-2.Q5_K_M.gguf -c 2048 --path ~/projects/smilellm
 libretranslate
+```
+
+### LibreTranslate
+loading it with python worked, but only locally. I couldn't get it to passthrough in nginx for public-facing.
+so
+trying https://github.com/argosopentech/LibreTranslate-init?tab=readme-ov-file
+
+yay! that worked, except to run `run.sh` it'll overwrite your nginx sites-enabled default. instead, add this to /etc/nginx/sites-enabled/default:
+```
+       location /translate {
+              include proxy_params;
+              proxy_pass http://unix:/home/libretranslate/LibreTranslate/libret>
+       }
 ```
