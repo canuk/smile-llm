@@ -252,14 +252,16 @@
           // Save the current messages (model's response) to the database
           const responseText = currentMessages.map(msg => msg.content).join('');
           let translatedResponseText = responseText;
-          const selectedLanguage = document.querySelector('input[name="language"]:checked').value;
+          const inputLanguage = localStorage.getItem("inputLanguage");
 
-          if (selectedLanguage === "es") {
-            console.log("Translating response to Spanish...");
-            translatedResponseText = await translateToSpanish(responseText);
-            // Update the user interface with the translated text
-            console.log(translatedResponseText);            
-            updateUI(translatedResponseText);               
+          if (inputLanguage && inputLanguage !== "en") {
+            console.log(`Translating response to ${inputLanguage}...`);
+            translatedResponseText = await translateToInputLanguage(responseText);
+            console.log(translatedResponseText);
+            updateUI(translatedResponseText); // Update the user interface with the translated text
+          } else {
+            // No translation needed if the input language is English or not set
+            updateUI(responseText); // Directly update the UI with the response text
           }
 
           saveResponseToDatabase(translatedResponseText);  
@@ -311,21 +313,48 @@
       }
     }
 
-    const translateToEnglish = async (text) => {
+    const detectLanguage = async (text) => {
+      const res = await fetch("/detect", {
+        method: "POST",
+        body: JSON.stringify({ q: text }),
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      return data.language;
+    };
+
+    const translateToEnglish = async (text, source) => {
       const res = await fetch("/translate", {
         method: "POST",
         body: JSON.stringify({
           q: text,
-          source: "es",
+          source: source,
           target: "en",
           format: "text"
         }),
         headers: { "Content-Type": "application/json" }
       });
-
       const data = await res.json();
       return data.translatedText;
     };
+
+
+    const translateToInputLanguage = async (text) => {
+      const inputLanguage = localStorage.getItem("inputLanguage") || "en"; // default to English if not set
+      const res = await fetch("/translate", {
+        method: "POST",
+        body: JSON.stringify({
+          q: text,
+          source: "en",
+          target: inputLanguage,
+          format: "text"
+        }),
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      return data.translatedText;
+    };
+    
 
     const translateToSpanish = async (text) => {
       const res = await fetch("/translate", {
@@ -354,11 +383,16 @@
 
       const originalMsg = msg;
 
-      if (selectedLanguage === "es") {
-        
-        console.log("Translating to English...");
-        msg = await translateToEnglish(msg);
+      // Detect language first
+      console.log("Detecting language...");
+      const detectedLanguage = await detectLanguage(msg);
+      if (detectedLanguage !== "en") {
+        localStorage.setItem("inputLanguage", detectedLanguage);
+        console.log(`Translating from ${detectedLanguage} to English...`);
+        msg = await translateToEnglish(msg, detectedLanguage);
         console.log(msg);
+      } else {
+        console.log("Message is in English, no translation needed.");
       }
 
       transcriptUpdate([...session.value.transcript, ["{{user}}", msg]])
